@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Club, User, UserRole, SupportRequest } from '../types';
 import { Button } from './Button';
@@ -12,7 +11,6 @@ interface SuperAdminPanelProps {
   clubs: Club[];
   setClubs: (clubs: Club[]) => void;
   users: User[];
-  // Fix: Changed setUsers type to React.Dispatch<React.SetStateAction<User[]>> to allow functional updates
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
   supportRequests: SupportRequest[];
   setSupportRequests: React.Dispatch<React.SetStateAction<SupportRequest[]>>;
@@ -83,10 +81,10 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
       setClubFormData({
         name: '',
         category: 'Technical',
-        description: 'New student organization at VIT Pune.',
+        description: 'A student organization at VIT Pune.',
         president: '',
         adminEmail: '',
-        password: '1234', // Default demo password
+        password: '1234',
         department: branches[0],
         memberCount: 0,
         logoUrl: `https://picsum.photos/100/100?random=${Date.now()}`,
@@ -115,13 +113,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
   };
 
   const handleSaveClub = () => {
-    if (!clubFormData.name || !clubFormData.president || !clubFormData.adminEmail || !clubFormData.password) {
-      alert("Please fill required fields: Club Name, Club Admin, Admin Email, and Access Password.");
+    if (!clubFormData.name || !clubFormData.president || !clubFormData.adminEmail) {
+      alert("Please fill all required fields.");
       return;
     }
 
     const clubId = editingClub ? editingClub.id : `c${Date.now()}`;
-    const updatedClubData = { ...clubFormData, id: clubId } as Club;
+    const updatedClubData = { ...clubFormData, id: clubId, category: clubFormData.category || 'Other' } as Club;
 
     // 1. Update Clubs State
     if (editingClub) {
@@ -130,88 +128,41 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
       setClubs([...clubs, updatedClubData]);
     }
 
-    // 2. Sync with Users State (Administrators)
+    // 2. Sync with Users State (Assigning Admin Role)
     setUsers(prevUsers => {
-      let nextUsers = [...prevUsers];
+      const email = updatedClubData.adminEmail!.toLowerCase();
+      const existingUserIndex = prevUsers.findIndex(u => u.email.toLowerCase() === email);
       
-      if (editingClub) {
-        // Find existing user associated with this club
-        const adminIndex = nextUsers.findIndex(u => u.joinedClubs.includes(editingClub.id));
-        if (adminIndex !== -1) {
-          nextUsers[adminIndex] = {
-            ...nextUsers[adminIndex],
-            email: updatedClubData.adminEmail!,
-            name: updatedClubData.president,
-            department: updatedClubData.department,
-            role: 'Club Admin'
-          };
-        } else {
-          // If no linked user found, check by email or create
-          const emailIndex = nextUsers.findIndex(u => u.email === updatedClubData.adminEmail);
-          if (emailIndex !== -1) {
-            nextUsers[emailIndex] = {
-              ...nextUsers[emailIndex],
-              role: 'Club Admin',
-              name: updatedClubData.president,
-              department: updatedClubData.department,
-              joinedClubs: Array.from(new Set([...nextUsers[emailIndex].joinedClubs, clubId]))
-            };
-          } else {
-            nextUsers.push({
-              email: updatedClubData.adminEmail!,
-              name: updatedClubData.president,
-              role: 'Club Admin',
-              department: updatedClubData.department,
-              joinedClubs: [clubId]
-            });
-          }
-        }
+      let nextUsers = [...prevUsers];
+      if (existingUserIndex !== -1) {
+        nextUsers[existingUserIndex] = {
+          ...nextUsers[existingUserIndex],
+          role: 'Club Admin',
+          joinedClubs: Array.from(new Set([...nextUsers[existingUserIndex].joinedClubs, clubId]))
+        };
       } else {
-        // New club sync
-        const emailIndex = nextUsers.findIndex(u => u.email === updatedClubData.adminEmail);
-        if (emailIndex !== -1) {
-          nextUsers[emailIndex] = {
-            ...nextUsers[emailIndex],
-            role: 'Club Admin',
-            name: updatedClubData.president,
-            department: updatedClubData.department,
-            joinedClubs: Array.from(new Set([...nextUsers[emailIndex].joinedClubs, clubId]))
-          };
-        } else {
-          nextUsers.push({
-            email: updatedClubData.adminEmail!,
-            name: updatedClubData.president,
-            role: 'Club Admin',
-            department: updatedClubData.department,
-            joinedClubs: [clubId]
-          });
-        }
+        nextUsers.push({
+          email: email,
+          name: updatedClubData.president,
+          role: 'Club Admin',
+          department: updatedClubData.department,
+          joinedClubs: [clubId]
+        });
       }
       return nextUsers;
     });
 
     setIsClubModalOpen(false);
-    alert("Club information successfully saved and synchronized with administrators.");
+    alert(`Club ${editingClub ? 'updated' : 'added'} successfully.`);
   };
 
   const handleDeleteClub = (clubId: string) => {
-    if (window.confirm("Are you sure you want to delete this club? This will also update the associated administrator's status.")) {
-      // 1. Remove from Clubs
+    if (window.confirm("Are you sure you want to delete this club?")) {
       setClubs(clubs.filter(c => c.id !== clubId));
-
-      // 2. Sync with Users
-      setUsers(prevUsers => prevUsers.map(user => {
-        if (user.joinedClubs.includes(clubId)) {
-          const remainingClubs = user.joinedClubs.filter(id => id !== clubId);
-          return {
-            ...user,
-            joinedClubs: remainingClubs,
-            role: (user.role === 'Club Admin' && remainingClubs.length === 0) ? 'Student' : user.role
-          };
-        }
-        return user;
-      }));
-      alert("Club deleted and administrators updated.");
+      setUsers(prev => prev.map(user => ({
+        ...user,
+        joinedClubs: user.joinedClubs.filter(id => id !== clubId)
+      })));
     }
   };
 
@@ -478,34 +429,6 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
                        </div>
                        <Input label="Access Password" type="password" placeholder="Create admin password (demo: 1234)" value={clubFormData.password || ''} onChange={e => setClubFormData({...clubFormData, password: e.target.value})} />
                        
-                       <div>
-                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type of Club</label>
-                           <select 
-                               className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                               value={['Technical', 'Sports', 'Cultural', 'Social'].includes(clubFormData.category || '') ? (clubFormData.category || 'Technical') : 'Other'} 
-                               onChange={e => {
-                                   const val = e.target.value;
-                                   setClubFormData({...clubFormData, category: val as any});
-                               }}
-                           >
-                               <option value="Technical">Technical</option>
-                               <option value="Sports">Sports</option>
-                               <option value="Cultural">Cultural</option>
-                               <option value="Social">Social</option>
-                               <option value="Other">Other</option>
-                           </select>
-                       </div>
-                       {((clubFormData.category && !['Technical', 'Sports', 'Cultural', 'Social'].includes(clubFormData.category)) || clubFormData.category === 'Other') && (
-                           <div className="animate-fade-in">
-                               <Input 
-                                   label="Specify Club Type" 
-                                   placeholder="e.g. Literary" 
-                                   value={clubFormData.category === 'Other' ? '' : clubFormData.category} 
-                                   onChange={e => setClubFormData({...clubFormData, category: e.target.value as any})} 
-                               />
-                           </div>
-                       )}
-
                        <div>
                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Branch</label>
                            <select 
